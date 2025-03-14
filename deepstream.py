@@ -68,16 +68,12 @@ def main():
     Gst.init(None)
 
     pipeline = Gst.parse_launch(
-        "filesrc location=video.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! "
-        "nvvideoconvert ! video/x-raw(memory:NVMM), format=NV12, width=1280, height=720, framerate=30/1 ! "
-        "nvstreammux name=mux batch-size=1 width=1280 height=720 batched-push-timeout=40000 ! "
-        "nvinfer config-file-path=pgie_config.txt ! "
-        "nvtracker ! "
-        "nvvideoconvert ! "
-        "appsink name=sink emit-signals=true"
-    )
+    "filesrc location=sample_720p.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! "
+    "nvvideoconvert ! video/x-raw(memory:NVMM), format=NV12 ! "
+    "nvinfer config-file-path=dstest1_pgie_config.txt ! "
+    "nvvideoconvert ! nvv4l2h264enc ! h264parse ! qtmux ! filesink location=output.mp4")
 
-    sink = pipeline.get_by_name("sink")
+    sink = pipeline.get_by_name("filesink0")
     sink_pad = sink.get_static_pad("sink")
     sink_pad.add_probe(Gst.PadProbeType.BUFFER, osd_sink_pad_buffer_probe, 0)
 
