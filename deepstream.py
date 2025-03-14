@@ -69,6 +69,7 @@ def main():
 
     pipeline = Gst.parse_launch(
         "filesrc location=video.mp4 ! qtdemux ! h264parse ! nvv4l2decoder ! "
+        "nvvideoconvert ! video/x-raw(memory:NVMM), format=NV12 ! "
         "nvstreammux name=mux batch-size=1 width=1280 height=720 ! "
         "nvinfer config-file-path=pgie_config.txt ! "
         "nvtracker ! "
