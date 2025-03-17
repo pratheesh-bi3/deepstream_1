@@ -31,7 +31,6 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
         except StopIteration:
             break
 
-        #Intiallizing object counter with 0.
         obj_counter = {
             PGIE_CLASS_ID_VEHICLE:0,
             PGIE_CLASS_ID_PERSON:0,
@@ -43,12 +42,11 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
         l_obj=frame_meta.obj_meta_list
         while l_obj is not None:
             try:
-                # Casting l_obj.data to pyds.NvDsObjectMeta
                 obj_meta=pyds.NvDsObjectMeta.cast(l_obj.data)
             except StopIteration:
                 break
             obj_counter[obj_meta.class_id] += 1
-            obj_meta.rect_params.border_color.set(0.0, 0.0, 1.0, 0.8) #0.8 is alpha (opacity)
+            obj_meta.rect_params.border_color.set(0.0, 0.0, 1.0, 0.8) 
             try: 
                 l_obj=l_obj.next
             except StopIteration:
@@ -57,28 +55,26 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
         display_meta=pyds.nvds_acquire_display_meta_from_pool(batch_meta)
         display_meta.num_labels = 1
         py_nvosd_text_params = display_meta.text_params[0]
-        py_nvosd_text_params.display_text = "Frame Number={} Number of Objects={} Vehicle_count={} Person_count={}".format(frame_number, num_rects, obj_counter[PGIE_CLASS_ID_VEHICLE], obj_counter[PGIE_CLASS_ID_PERSON])
-
-        # Now set the offsets where the string should appear
+        py_nvosd_text_params.display_text = "Frame Number={} Number of Objects={} Vehicle_count={} Person_count={}".format(
+            frame_number, num_rects, obj_counter[PGIE_CLASS_ID_VEHICLE], obj_counter[PGIE_CLASS_ID_PERSON]
+        )
         py_nvosd_text_params.x_offset = 10
         py_nvosd_text_params.y_offset = 12
-
         py_nvosd_text_params.font_params.font_name = "Serif"
         py_nvosd_text_params.font_params.font_size = 10
         py_nvosd_text_params.font_params.font_color.set(1.0, 1.0, 1.0, 1.0)
-
         py_nvosd_text_params.set_bg_clr = 1
         py_nvosd_text_params.text_bg_clr.set(0.0, 0.0, 0.0, 1.0)
+        
         print(pyds.get_string(py_nvosd_text_params.display_text))
         pyds.nvds_add_display_meta_to_frame(frame_meta, display_meta)
+        
         try:
             l_frame=l_frame.next
         except StopIteration:
             break
 			
     return Gst.PadProbeReturn.OK	
-
-MUXER_BATCH_TIMEOUT_USEC = 4000000  # 4 milliseconds
 
 def decodebin_pad_added(decodebin, pad, streammux):
     print("Inside decodebin_pad_added")
@@ -114,6 +110,7 @@ def main(args):
     decodebin = Gst.ElementFactory.make("decodebin", "decoder")
     streammux = Gst.ElementFactory.make("nvstreammux", "stream-muxer")
     pgie = Gst.ElementFactory.make("nvinfer", "primary-inference")
+    nvtracker = Gst.ElementFactory.make("nvtracker", "tracker")  # Added NvSort Tracker
     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "converter")
     nvosd = Gst.ElementFactory.make("nvdsosd", "onscreendisplay")
     encoder = Gst.ElementFactory.make("nvv4l2h264enc", "h264-encoder")
@@ -121,9 +118,10 @@ def main(args):
     muxer = Gst.ElementFactory.make("qtmux", "muxer")
     sink = Gst.ElementFactory.make("filesink", "file-output")
 
-    if not all([source, decodebin, streammux, pgie, nvvidconv, nvosd, encoder, parser, muxer, sink]):
+    if not all([source, decodebin, streammux, pgie, nvtracker, nvvidconv, nvosd, encoder, parser, muxer, sink]):
         sys.stderr.write("Failed to create one or more elements\n")
         return
+    
     source.set_property("location", args[1])
     streammux.set_property("batch-size", 1)
     streammux.set_property("width", 1920)
@@ -131,24 +129,23 @@ def main(args):
     streammux.set_property("batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC)
     pgie.set_property("config-file-path", "dstest1_pgie_config.txt")
 
-    sink.set_property("location", "custom_output.mp4")
+    # Tracker configuration
+    nvtracker.set_property("tracker-width", 640)
+    nvtracker.set_property("tracker-height", 480)
+    nvtracker.set_property("gpu_id", 0)
+    nvtracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvdcf.so")
+    nvtracker.set_property("ll-config-file", "configs/dstest2_tracker_config.txt")
+    
+    sink.set_property("location", "output.mp4")
     sink.set_property("sync", False)
 
-    pipeline.add(source)
-    pipeline.add(decodebin)
-    pipeline.add(streammux)
-    pipeline.add(pgie)
-    pipeline.add(nvvidconv)
-    pipeline.add(nvosd)
-    pipeline.add(encoder)
-    pipeline.add(parser)
-    pipeline.add(muxer)
-    pipeline.add(sink)
+    pipeline.add(source, decodebin, streammux, pgie, nvtracker, nvvidconv, nvosd, encoder, parser, muxer, sink)
 
     # Link static elements
     source.link(decodebin)
     streammux.link(pgie)
-    pgie.link(nvvidconv)
+    pgie.link(nvtracker)  # Linked Tracker after PGIE
+    nvtracker.link(nvvidconv)
     nvvidconv.link(nvosd)
     nvosd.link(encoder)
     encoder.link(parser)
@@ -157,7 +154,7 @@ def main(args):
 
     decodebin.connect("pad-added", decodebin_pad_added, streammux)
 
-    print("Starting pipeline, saving output to hellow_output.mp4\n")
+    print("Starting pipeline, saving output to output.mp4\n")
     pipeline.set_state(Gst.State.PLAYING)
 
     try:
