@@ -130,11 +130,12 @@ def main(args):
     pgie.set_property("config-file-path", "dstest1_pgie_config.txt")
 
     # Tracker configuration
-    nvtracker.set_property("tracker-width", 640)
-    nvtracker.set_property("tracker-height", 480)
-    nvtracker.set_property("gpu_id", 0)
+    nvtracker = Gst.ElementFactory.make("nvtracker", "tracker")
+    nvtracker.set_property("tracker-width", 960)
+    nvtracker.set_property("tracker-height", 544)
     nvtracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so")
-    tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-test1/iou_config.yml")
+    nvtracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvSORT.yml")
+    nvtracker.set_property("gpu_id", 0)
     
     sink.set_property("location", "iou_tracker_test_1.mp4")
     sink.set_property("sync", False)
