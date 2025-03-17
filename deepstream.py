@@ -175,7 +175,7 @@ def main(args):
 
     decodebin.connect("pad-added", decodebin_pad_added, streammux)
 
-    print("Starting pipeline, saving output to output.mp4\n")
+    print("Starting pipeline, saving output to hellow_output.mp4\n")
     pipeline.set_state(Gst.State.PLAYING)
 
     try:
