@@ -2,8 +2,6 @@ import sys
 import gi
 
 gi.require_version("Gst", "1.0")
-gi.require_version("GstNvInfer", "1.0")
-gi.require_version("GstNvTracker", "1.0")
 from gi.repository import Gst, GLib
 
 # Initialize GStreamer
