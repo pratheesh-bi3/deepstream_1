@@ -68,7 +68,7 @@ def main(video_path):
     tracker.set_property("ll-config-file", "config_tracker_NvDCF_perf.yml")
 
     # Add elements to pipeline
-    pipeline.add(source, demux, parser, decoder, streammux, nvinfer, tracker, nvvidconv, capsfilter, encoder, parser_out, muxer, sink)
+    pipeline.add_many(source, demux, parser, decoder, streammux, nvinfer, tracker, nvvidconv, capsfilter, encoder, parser_out, muxer, sink)
 
     # Link static elements
     source.link(demux)
