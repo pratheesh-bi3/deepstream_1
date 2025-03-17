@@ -40,7 +40,7 @@ def main(args):
         f"filesrc location={args[1]} ! decodebin ! videoconvert ! video/x-raw,format=NV12 ! \
         nvvideoconvert ! m.sink_0 nvstreammux name=m batch-size=1 width=1920 height=1080 ! \
         nvinfer config-file-path=dstest1_pgie_config.txt ! nvdsosd ! nvv4l2h264enc ! \
-        h264parse ! qtmux ! filesink location=output.mp4"
+        h264parse ! qtmux ! filesink location=hellow_output.mp4"
     )
 
     if not pipeline:
