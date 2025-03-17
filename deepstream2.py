@@ -4,6 +4,7 @@ import gi
 gi.require_version("Gst", "1.0")
 from gi.repository import Gst, GLib, GObject
 
+MUXER_BATCH_TIMEOUT_USEC = 4000000
 def decodebin_pad_added(decodebin, pad, streammux):
     print("Inside decodebin_pad_added")
     caps = pad.query_caps(None)

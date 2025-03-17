@@ -149,7 +149,7 @@ def main(args):
     streammux.set_property("batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC)
     pgie.set_property("config-file-path", "dstest1_pgie_config.txt")
 
-    sink.set_property("location", "output.mp4")
+    sink.set_property("location", "custom_output.mp4")
     sink.set_property("sync", False)
 
     pipeline.add(source)
