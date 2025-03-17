@@ -49,7 +49,6 @@ def main(video_path):
     decoder = Gst.ElementFactory.make("nvv4l2decoder", "decoder")
     streammux = Gst.ElementFactory.make("nvstreammux", "stream-mux")
     nvinfer = Gst.ElementFactory.make("nvinfer", "primary-inference")
-    tracker = Gst.ElementFactory.make("nvtracker", "tracker")
     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "nvvidconv")
     capsfilter = Gst.ElementFactory.make("capsfilter", "capsfilter")
     encoder = Gst.ElementFactory.make("nvv4l2h264enc", "encoder")
@@ -57,7 +56,7 @@ def main(video_path):
     muxer = Gst.ElementFactory.make("qtmux", "muxer")
     sink = Gst.ElementFactory.make("filesink", "file-sink")
 
-    if not all([source, demux, parser, decoder, streammux, nvinfer, tracker, nvvidconv, capsfilter, encoder, parser_out, muxer, sink]):
+    if not all([source, demux, parser, decoder, streammux, nvinfer, nvvidconv, capsfilter, encoder, parser_out, muxer, sink]):
         print("Failed to create elements")
         return
 
@@ -79,7 +78,6 @@ def main(video_path):
     pipeline.add(decoder)
     pipeline.add(streammux)
     pipeline.add(nvinfer)
-    pipeline.add(tracker)
     pipeline.add(nvvidconv)
     pipeline.add(capsfilter)
     pipeline.add(encoder)
