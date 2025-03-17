@@ -145,7 +145,7 @@ def main(args):
     pipeline.add(pgie)
     pipeline.add(nvtracker)
     pipeline.add(nvvidconv)
-    pipeline.add(tracker)
+    pipeline.add(nvtracker)
     pipeline.add(nvosd)
     pipeline.add(encoder)
     pipeline.add(parser)
