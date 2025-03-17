@@ -78,24 +78,6 @@ def osd_sink_pad_buffer_probe(pad,info,u_data):
 			
     return Gst.PadProbeReturn.OK	
 
-def decodebin_pad_added(decodebin, pad, streammux):
-    print("Inside decodebin_pad_added")
-    caps = pad.query_caps(None)
-    caps_str = caps.to_string() if caps else "Unknown"
-    print(f"Pad caps: {caps_str}")
-
-    if caps and caps_str.startswith("video/x-raw"):
-        sinkpad = streammux.get_request_pad("sink_0")
-        if not sinkpad:
-            sys.stderr.write("Error: Unable to get sink pad from streammux\n")
-            return
-
-        if pad.link(sinkpad) != Gst.PadLinkReturn.OK:
-            sys.stderr.write("Error: Failed to link decodebin pad to streammux\n")
-
-
-#decodebin.connect("pad-added", decodebin_pad_added)
-
 MUXER_BATCH_TIMEOUT_USEC = 4000000  # 4 milliseconds
 
 def decodebin_pad_added(decodebin, pad, streammux):
