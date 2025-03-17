@@ -136,10 +136,21 @@ def main(args):
     nvtracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvdcf.so")
     nvtracker.set_property("ll-config-file", "configs/dstest2_tracker_config.txt")
     
-    sink.set_property("location", "output.mp4")
+    sink.set_property("location", "tracker_test_1.mp4")
     sink.set_property("sync", False)
 
-    pipeline.add(source, decodebin, streammux, pgie, nvtracker, nvvidconv, nvosd, encoder, parser, muxer, sink)
+    pipeline.add(source)
+    pipeline.add(decodebin)
+    pipeline.add(streammux)
+    pipeline.add(pgie)
+    pipeline.add(nvtracker)
+    pipeline.add(nvvidconv)
+    pipeline.add(tracker)
+    pipeline.add(nvosd)
+    pipeline.add(encoder)
+    pipeline.add(parser)
+    pipeline.add(muxer)
+    pipeline.add(sink)
 
     # Link static elements
     source.link(decodebin)
@@ -154,7 +165,7 @@ def main(args):
 
     decodebin.connect("pad-added", decodebin_pad_added, streammux)
 
-    print("Starting pipeline, saving output to output.mp4\n")
+    print("Starting pipeline, saving output to tracker_test_1.mp4\n")
     pipeline.set_state(Gst.State.PLAYING)
 
     try:
