@@ -74,7 +74,7 @@ def main(video_path):
     pipeline.add(decoder)
     pipeline.add(streammux)
     pipeline.add(nvinfer)
-    pipeline.add(nvinfer)
+    pipeline.add(tracker)
     pipeline.add(nvvidconv)
     pipeline.add(capsfilter)
     pipeline.add(encoder)
