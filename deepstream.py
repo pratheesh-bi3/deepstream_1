@@ -2,7 +2,7 @@ import sys
 import gi
 
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst, GLib
+from gi.repository import Gst, GLib, GObject
 
 def bus_call(bus, message, loop):
     """Handles messages from the GStreamer pipeline."""
@@ -15,8 +15,17 @@ def bus_call(bus, message, loop):
         loop.quit()
     return True
 
+def demux_callback(demuxer, pad, data):
+    """Dynamically links qtdemux pad to h264parse."""
+    caps = pad.query_caps(None)
+    structure = caps.get_structure(0)
+    media_type = structure.get_name()
+
+    if media_type.startswith("video"):
+        print("Linking demux to parser")
+        pad.link(data.get_static_pad("sink"))
+
 def main(video_path):
-    # Initialize GStreamer
     Gst.init(None)
 
     # Create pipeline
@@ -30,14 +39,13 @@ def main(video_path):
     streammux = Gst.ElementFactory.make("nvstreammux", "stream-mux")
     nvinfer = Gst.ElementFactory.make("nvinfer", "primary-inference")
     tracker = Gst.ElementFactory.make("nvtracker", "tracker")
-    nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "nvvidconv")  # FIX: Using correct converter
+    nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "nvvidconv")
     capsfilter = Gst.ElementFactory.make("capsfilter", "capsfilter")
     encoder = Gst.ElementFactory.make("nvv4l2h264enc", "encoder")
     parser_out = Gst.ElementFactory.make("h264parse", "parser_out")
     muxer = Gst.ElementFactory.make("qtmux", "muxer")
     sink = Gst.ElementFactory.make("filesink", "file-sink")
 
-    # Check if elements were created properly
     if not all([source, demux, parser, decoder, streammux, nvinfer, tracker, nvvidconv, capsfilter, encoder, parser_out, muxer, sink]):
         print("Failed to create elements")
         return
@@ -48,32 +56,23 @@ def main(video_path):
     streammux.set_property("width", 1280)
     streammux.set_property("height", 720)
     streammux.set_property("live-source", 0)
-    streammux.set_property("nvbuf-memory-type", 0)  # FIX: Ensuring correct memory type
+    streammux.set_property("nvbuf-memory-type", 0)  # Ensure correct memory type
 
     nvinfer.set_property("config-file-path", "dstest1_pgie_config.txt")
     sink.set_property("location", "output.mp4")
 
-    capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw, format=RGBA"))
+    capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=NV12"))
+
+    # Set tracker properties (Ensure library exists)
+    tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_mot_klt.so")
+    tracker.set_property("ll-config-file", "config_tracker_NvDCF_perf.yml")
 
     # Add elements to pipeline
-    pipeline.add(source)
-    pipeline.add(demux)
-    pipeline.add(parser)
-    pipeline.add(decoder)
-    pipeline.add(streammux)
-    pipeline.add(nvinfer)
-    pipeline.add(tracker)
-    pipeline.add(nvvidconv)
-    pipeline.add(capsfilter)
-    pipeline.add(encoder)
-    pipeline.add(parser_out)
-    pipeline.add(muxer)
-    pipeline.add(sink)
+    pipeline.add(source, demux, parser, decoder, streammux, nvinfer, tracker, nvvidconv, capsfilter, encoder, parser_out, muxer, sink)
 
-    # Link elements
+    # Link static elements
     source.link(demux)
     parser.link(decoder)
-    decoder.link(streammux)
     streammux.link(nvinfer)
     nvinfer.link(tracker)
     tracker.link(nvvidconv)
@@ -82,6 +81,22 @@ def main(video_path):
     encoder.link(parser_out)
     parser_out.link(muxer)
     muxer.link(sink)
+
+    # Handle dynamic linking of demux output
+    demux.connect("pad-added", demux_callback, parser)
+
+    # Create streammux pad dynamically
+    sinkpad = streammux.request_pad_simple("sink_0")
+    if not sinkpad:
+        print("Unable to create sink pad in nvstreammux")
+        return
+
+    decoder_src_pad = decoder.get_static_pad("src")
+    if not decoder_src_pad:
+        print("Unable to get decoder src pad")
+        return
+
+    decoder_src_pad.link(sinkpad)
 
     # Message bus
     bus = pipeline.get_bus()
