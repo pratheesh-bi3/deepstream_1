@@ -134,7 +134,7 @@ def main(args):
     nvtracker.set_property("tracker-height", 480)
     nvtracker.set_property("gpu_id", 0)
     nvtracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvdcf.so")
-    nvtracker.set_property("ll-config-file", "configs/dstest2_tracker_config.txt")
+    nvtracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-test2/config_tracker_NvDCF")
     
     sink.set_property("location", "tracker_test_1.mp4")
     sink.set_property("sync", False)
