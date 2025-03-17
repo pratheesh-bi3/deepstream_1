@@ -18,20 +18,31 @@ def bus_call(bus, message, loop):
 def demux_callback(demuxer, pad, data):
     """Dynamically links qtdemux pad to h264parse."""
     caps = pad.query_caps(None)
-    structure = caps.get_structure(0)
-    media_type = structure.get_name()
+    if not caps or caps.get_size() == 0:
+        print("No caps available on demux pad")
+        return
 
+    structure = caps.get_structure(0)
+    if not structure:
+        print("No structure available in caps")
+        return
+
+    media_type = structure.get_name()
     if media_type.startswith("video"):
         print("Linking demux to parser")
-        pad.link(data.get_static_pad("sink"))
+        sink_pad = data.get_static_pad("sink")
+        if sink_pad:
+            pad.link(sink_pad)
+
+def stop_pipeline(pipeline):
+    pipeline.set_state(Gst.State.NULL)
+    print("Pipeline stopped")
 
 def main(video_path):
     Gst.init(None)
 
-    # Create pipeline
     pipeline = Gst.Pipeline()
 
-    # Create elements
     source = Gst.ElementFactory.make("filesrc", "file-source")
     demux = Gst.ElementFactory.make("qtdemux", "demux")
     parser = Gst.ElementFactory.make("h264parse", "parser")
@@ -50,39 +61,23 @@ def main(video_path):
         print("Failed to create elements")
         return
 
-    # Set properties
     source.set_property("location", video_path)
     streammux.set_property("batch-size", 1)
     streammux.set_property("width", 1280)
     streammux.set_property("height", 720)
     streammux.set_property("live-source", 0)
-    streammux.set_property("nvbuf-memory-type", 0)  # Ensure correct memory type
+    streammux.set_property("nvbuf-memory-type", 0)
 
     nvinfer.set_property("config-file-path", "dstest1_pgie_config.txt")
-    sink.set_property("location", "output.mp4")
+    sink.set_property("location", "custom_output.mp4")
 
-    capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=NV12"))
+    capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=NV12, width=1280, height=720"))
 
-    # Set tracker properties (Ensure library exists)
-    tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_mot_klt.so")
+    tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_mot_iou.so")
     tracker.set_property("ll-config-file", "config_tracker_NvDCF_perf.yml")
 
-    # Add elements to pipeline
-    pipeline.add(source)
-    pipeline.add(demux)
-    pipeline.add(parser)
-    pipeline.add(decoder)
-    pipeline.add(streammux)
-    pipeline.add(nvinfer)
-    pipeline.add(tracker)
-    pipeline.add(nvvidconv)
-    pipeline.add(capsfilter)
-    pipeline.add(encoder)
-    pipeline.add(parser_out)
-    pipeline.add(muxer)
-    pipeline.add(sink)
-  
-    # Link static elements
+    pipeline.add(source, demux, parser, decoder, streammux, nvinfer, tracker, nvvidconv, capsfilter, encoder, parser_out, muxer, sink)
+
     source.link(demux)
     parser.link(decoder)
     streammux.link(nvinfer)
@@ -94,37 +89,27 @@ def main(video_path):
     parser_out.link(muxer)
     muxer.link(sink)
 
-    # Handle dynamic linking of demux output
     demux.connect("pad-added", demux_callback, parser)
 
-    # Create streammux pad dynamically
-    sinkpad = streammux.request_pad_simple("sink_0")
+    sinkpad = streammux.get_request_pad("sink_0")
     if not sinkpad:
         print("Unable to create sink pad in nvstreammux")
         return
 
     decoder_src_pad = decoder.get_static_pad("src")
-    if not decoder_src_pad:
-        print("Unable to get decoder src pad")
-        return
+    if decoder_src_pad:
+        decoder_src_pad.link(sinkpad)
 
-    decoder_src_pad.link(sinkpad)
-
-    # Message bus
     bus = pipeline.get_bus()
     loop = GLib.MainLoop()
     bus.add_signal_watch()
     bus.connect("message", bus_call, loop)
 
-    # Start pipeline
     pipeline.set_state(Gst.State.PLAYING)
     try:
         loop.run()
     except KeyboardInterrupt:
-        pass
-
-    # Cleanup
-    pipeline.set_state(Gst.State.NULL)
+        stop_pipeline(pipeline)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
