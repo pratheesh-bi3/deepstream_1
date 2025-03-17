@@ -1,0 +1,15 @@
+tracker-config:
+  tracker-type: NvMultiObjectTracker
+  ll-lib-file: /opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so
+  ll-config-file:  
+  enable-batch-process: 1
+  enable-past-frame: 1
+  tracker-width: 1920
+  tracker-height: 1080
+  gpu-id: 0
+
+  ## IOU Specific Parameters
+  iou-threshold: 0.3
+  min-matching-threshold: 0.3
+  min-box-area: 100
+  max-age: 5
