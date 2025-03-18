@@ -1,148 +1,182 @@
 import sys
-import gi
-
-gi.require_version("Gst", "1.0")
-from gi.repository import Gst, GLib
-
-def bus_call(bus, message, loop, pipeline):
-    """Handles messages from the GStreamer pipeline."""
-    if message.type == Gst.MessageType.EOS:
-        print("End of stream")
-        stop_pipeline(pipeline, loop)
-    elif message.type == Gst.MessageType.ERROR:
-        err, debug = message.parse_error()
-        print(f"Error: {err}, {debug}")
-        stop_pipeline(pipeline, loop)
-    return True
-
-def stop_pipeline(pipeline, loop):
-    """Stops the pipeline safely."""
-    print("Stopping pipeline...")
-    pipeline.set_state(Gst.State.NULL)
-    pipeline.get_state(Gst.CLOCK_TIME_NONE)  # Ensure complete state change
-    print("Pipeline stopped")
-    loop.quit()
-
-def demux_callback(demuxer, pad, data):
-    """Dynamically links qtdemux pad to h264parse."""
-    caps = pad.query_caps(None)
-    if not caps or caps.get_size() == 0:
-        print("No caps available on demux pad")
-        return
-
-    structure = caps.get_structure(0)
-    if not structure:
-        print("No structure available in caps")
-        return
-
-    media_type = structure.get_name()
-    if media_type.startswith("video"):
-        print("Linking demux to parser")
-        sink_pad = data.get_static_pad("sink")
-        if sink_pad:
-            pad.link(sink_pad)
-
-def main(video_path):
-    Gst.init(None)
-
-    # Create GStreamer pipeline
-    pipeline = Gst.Pipeline()
-
-    # Create elements
-    source = Gst.ElementFactory.make("filesrc", "file-source")
-    demux = Gst.ElementFactory.make("qtdemux", "demux")
-    parser = Gst.ElementFactory.make("h264parse", "parser")
-    decoder = Gst.ElementFactory.make("nvv4l2decoder", "decoder")
-    streammux = Gst.ElementFactory.make("nvstreammux", "stream-mux")
-    nvinfer = Gst.ElementFactory.make("nvinfer", "primary-inference")
-    tracker = Gst.ElementFactory.make("nvtracker", "tracker")
-    nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "nvvidconv")
-    capsfilter = Gst.ElementFactory.make("capsfilter", "capsfilter")
-    encoder = Gst.ElementFactory.make("nvv4l2h264enc", "encoder")
-    parser_out = Gst.ElementFactory.make("h264parse", "parser_out")
-    muxer = Gst.ElementFactory.make("qtmux", "muxer")
-    sink = Gst.ElementFactory.make("filesink", "file-sink")
-
-    # Ensure all elements were created
-    elements = {
-        "source": source, "demux": demux, "parser": parser, "decoder": decoder, 
-        "streammux": streammux, "nvinfer": nvinfer, "tracker": tracker, 
-        "nvvidconv": nvvidconv, "capsfilter": capsfilter, "encoder": encoder, 
-        "parser_out": parser_out, "muxer": muxer, "sink": sink
-    }
-    
-    for name, element in elements.items():
-        if not element:
-            print(f"Error: Failed to create {name}")
-            return
-
-    # Set element properties
-    source.set_property("location", video_path)
-    streammux.set_property("batch-size", 1)
-    streammux.set_property("width", 1280)
-    streammux.set_property("height", 720)
-    streammux.set_property("live-source", 0)
-    streammux.set_property("nvbuf-memory-type", 0)
-
-    nvinfer.set_property("config-file-path", "dstest1_pgie_config.txt")
-    sink.set_property("location", "nvdeepsort_tracker_test_1.mp4")
-
-    capsfilter.set_property("caps", Gst.Caps.from_string(
-        "video/x-raw(memory:NVMM), format=NV12, width=1280, height=720"
-    ))
-
-    tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_nvmultiobjecttracker.so")
-    tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-test1/iou_config.yml")
-
-    # Add elements to pipeline
-    for element in elements.values():
-        pipeline.add(element)
-
-    # Link elements
-    source.link(demux)
-    parser.link(decoder)
-    streammux.link(nvinfer)
-    nvinfer.link(tracker)
-    tracker.link(nvvidconv)
-    nvvidconv.link(capsfilter)
-    capsfilter.link(encoder)
-    encoder.link(parser_out)
-    parser_out.link(muxer)
-    muxer.link(sink)
-
-    # Handle dynamic demux pad linking
-    demux.connect("pad-added", demux_callback, parser)
-
-    # Get and link request pad for streammux
-    sinkpad = streammux.request_pad(streammux.get_pad_template("sink"))
-    if not sinkpad:
-        print("Error: Unable to create sink pad in nvstreammux")
-        return
-
-    decoder_src_pad = decoder.get_static_pad("src")
-    if decoder_src_pad:
-        decoder_src_pad.link(sinkpad)
-    else:
-        print("Error: Unable to get decoder src pad")
-        return
-
-    # Start the pipeline
-    bus = pipeline.get_bus()
-    loop = GLib.MainLoop()
-    bus.add_signal_watch()
-    bus.connect("message", bus_call, loop, pipeline)
-
-    print("Starting pipeline...")
-    pipeline.set_state(Gst.State.PLAYING)
-
-    try:
-        loop.run()
-    except KeyboardInterrupt:
-        stop_pipeline(pipeline, loop)
-
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print(f"Usage: {sys.argv[0]} <input_video>")
-        sys.exit(1)
-
-    main(sys.argv[1])
+ sys.path.append('../')
+ import os
+ import gi
+ gi.require_version('Gst', '1.0')
+ from gi.repository import GLib, Gst
+ from common.platform_info import PlatformInfo
+ from common.bus_call import bus_call
+ 
+ import pyds
+ 
+ PGIE_CLASS_ID_VEHICLE = 0
+ PGIE_CLASS_ID_BICYCLE = 1
+ PGIE_CLASS_ID_PERSON = 2
+ PGIE_CLASS_ID_ROADSIGN = 3
+ MUXER_BATCH_TIMEOUT_USEC = 33000
+ 
+ def osd_sink_pad_buffer_probe(pad,info,u_data):
+     frame_number=0
+     num_rects=0
+ 
+     gst_buffer = info.get_buffer()
+     if not gst_buffer:
+         print("Unable to get GstBuffer ")
+         return
+     batch_meta = pyds.gst_buffer_get_nvds_batch_meta(hash(gst_buffer))
+     l_frame = batch_meta.frame_meta_list
+     while l_frame is not None:
+         try:
+             frame_meta = pyds.NvDsFrameMeta.cast(l_frame.data)
+         except StopIteration:
+             break
+ 
+         obj_counter = {
+             PGIE_CLASS_ID_VEHICLE:0,
+             PGIE_CLASS_ID_PERSON:0,
+             PGIE_CLASS_ID_BICYCLE:0,
+             PGIE_CLASS_ID_ROADSIGN:0
+         }
+         frame_number=frame_meta.frame_num
+         num_rects = frame_meta.num_obj_meta
+         l_obj=frame_meta.obj_meta_list
+         while l_obj is not None:
+             try:
+                 obj_meta=pyds.NvDsObjectMeta.cast(l_obj.data)
+             except StopIteration:
+                 break
+             obj_counter[obj_meta.class_id] += 1
+             obj_meta.rect_params.border_color.set(0.0, 0.0, 1.0, 0.8) 
+             try: 
+                 l_obj=l_obj.next
+             except StopIteration:
+                 break
+ 
+         display_meta=pyds.nvds_acquire_display_meta_from_pool(batch_meta)
+         display_meta.num_labels = 1
+         py_nvosd_text_params = display_meta.text_params[0]
+         py_nvosd_text_params.display_text = "Frame Number={} Number of Objects={} Vehicle_count={} Person_count={}".format(
+             frame_number, num_rects, obj_counter[PGIE_CLASS_ID_VEHICLE], obj_counter[PGIE_CLASS_ID_PERSON]
+         )
+         py_nvosd_text_params.x_offset = 10
+         py_nvosd_text_params.y_offset = 12
+         py_nvosd_text_params.font_params.font_name = "Serif"
+         py_nvosd_text_params.font_params.font_size = 10
+         py_nvosd_text_params.font_params.font_color.set(1.0, 1.0, 1.0, 1.0)
+         py_nvosd_text_params.set_bg_clr = 1
+         py_nvosd_text_params.text_bg_clr.set(0.0, 0.0, 0.0, 1.0)
+ 
+         print(pyds.get_string(py_nvosd_text_params.display_text))
+         pyds.nvds_add_display_meta_to_frame(frame_meta, display_meta)
+ 
+         try:
+             l_frame=l_frame.next
+         except StopIteration:
+             break
+ 
+     return Gst.PadProbeReturn.OK	
+ 
+ def decodebin_pad_added(decodebin, pad, streammux):
+     print("Inside decodebin_pad_added")
+     caps = pad.query_caps(None)
+     caps_str = caps.to_string() if caps else "Unknown"
+     print(f"Pad caps: {caps_str}")
+ 
+     if caps and caps_str.startswith("video/x-raw"):
+         sinkpad = streammux.get_request_pad("sink_0")
+         if not sinkpad:
+             sys.stderr.write("Error: Unable to get sink pad from streammux\n")
+             return
+ 
+         if pad.link(sinkpad) != Gst.PadLinkReturn.OK:
+             sys.stderr.write("Error: Failed to link decodebin pad to streammux\n")
+ 
+ 
+ def main(args):
+     if len(args) != 2:
+         sys.stderr.write("Usage: %s <media file>\n" % args[0])
+         sys.exit(1)
+ 
+     Gst.init(None)
+ 
+     print("Creating Pipeline\n")
+     pipeline = Gst.Pipeline()
+ 
+     if not pipeline:
+         sys.stderr.write("Failed to create Pipeline\n")
+         return
+ 
+     source = Gst.ElementFactory.make("filesrc", "file-source")
+     decodebin = Gst.ElementFactory.make("decodebin", "decoder")
+     streammux = Gst.ElementFactory.make("nvstreammux", "stream-muxer")
+     pgie = Gst.ElementFactory.make("nvinfer", "primary-inference")
+     nvtracker = Gst.ElementFactory.make("nvtracker", "tracker")  # Added NvSort Tracker
+     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "converter")
+     nvosd = Gst.ElementFactory.make("nvdsosd", "onscreendisplay")
+     encoder = Gst.ElementFactory.make("nvv4l2h264enc", "h264-encoder")
+     parser = Gst.ElementFactory.make("h264parse", "h264-parser")
+     muxer = Gst.ElementFactory.make("qtmux", "muxer")
+     sink = Gst.ElementFactory.make("filesink", "file-output")
+ 
+     if not all([source, decodebin, streammux, pgie, nvtracker, nvvidconv, nvosd, encoder, parser, muxer, sink]):
+         sys.stderr.write("Failed to create one or more elements\n")
+         return
+ 
+     source.set_property("location", args[1])
+     streammux.set_property("batch-size", 1)
+     streammux.set_property("width", 1920)
+     streammux.set_property("height", 1080)
+     streammux.set_property("batched-push-timeout", MUXER_BATCH_TIMEOUT_USEC)
+     pgie.set_property("config-file-path", "dstest1_pgie_config.txt")
+ 
+     # Tracker configuration
+     nvtracker.set_property("tracker-width", 640)
+     nvtracker.set_property("tracker-height", 480)
+     nvtracker.set_property("gpu_id", 0)
+     nvtracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so")
+     tracker.set_property("ll-config-file", "iou_config.yml")
+     tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-test1/iou_config.yml")
+ 
+     sink.set_property("location", "iou_tracker_test_1.mp4")
+     sink.set_property("sync", False)
+ 
+     pipeline.add(source)
+     pipeline.add(decodebin)
+     pipeline.add(streammux)
+     pipeline.add(pgie)
+     pipeline.add(nvtracker)
+     pipeline.add(nvvidconv)
+     pipeline.add(nvtracker)
+     pipeline.add(nvosd)
+     pipeline.add(encoder)
+     pipeline.add(parser)
+     pipeline.add(muxer)
+     pipeline.add(sink)
+ 
+     # Link static elements
+     source.link(decodebin)
+     streammux.link(pgie)
+     pgie.link(nvtracker)  # Linked Tracker after PGIE
+     nvtracker.link(nvvidconv)
+     nvvidconv.link(nvosd)
+     nvosd.link(encoder)
+     encoder.link(parser)
+     parser.link(muxer)
+     muxer.link(sink)
+ 
+     decodebin.connect("pad-added", decodebin_pad_added, streammux)
+ 
+     print("Starting pipeline, saving output to tracker_test_1.mp4\n")
+     pipeline.set_state(Gst.State.PLAYING)
+ 
+     try:
+         loop = GLib.MainLoop()
+         loop.run()
+     except KeyboardInterrupt:
+         pass
+ 
+     print("Stopping pipeline\n")
+     pipeline.set_state(Gst.State.NULL)
+ 
+ if __name__ == '__main__':
+     sys.exit(main(sys.argv))
