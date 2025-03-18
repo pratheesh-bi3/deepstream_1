@@ -2,18 +2,26 @@ import sys
 import gi
 
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst, GLib, GObject
+from gi.repository import Gst, GLib
 
-def bus_call(bus, message, loop):
+def bus_call(bus, message, loop, pipeline):
     """Handles messages from the GStreamer pipeline."""
     if message.type == Gst.MessageType.EOS:
         print("End of stream")
-        loop.quit()
+        stop_pipeline(pipeline, loop)
     elif message.type == Gst.MessageType.ERROR:
         err, debug = message.parse_error()
         print(f"Error: {err}, {debug}")
-        loop.quit()
+        stop_pipeline(pipeline, loop)
     return True
+
+def stop_pipeline(pipeline, loop):
+    """Stops the pipeline safely."""
+    print("Stopping pipeline...")
+    pipeline.set_state(Gst.State.NULL)
+    pipeline.get_state(Gst.CLOCK_TIME_NONE)  # Ensure complete state change
+    print("Pipeline stopped")
+    loop.quit()
 
 def demux_callback(demuxer, pad, data):
     """Dynamically links qtdemux pad to h264parse."""
@@ -34,15 +42,13 @@ def demux_callback(demuxer, pad, data):
         if sink_pad:
             pad.link(sink_pad)
 
-def stop_pipeline(pipeline):
-    pipeline.set_state(Gst.State.NULL)
-    print("Pipeline stopped")
-
 def main(video_path):
     Gst.init(None)
 
+    # Create GStreamer pipeline
     pipeline = Gst.Pipeline()
 
+    # Create elements
     source = Gst.ElementFactory.make("filesrc", "file-source")
     demux = Gst.ElementFactory.make("qtdemux", "demux")
     parser = Gst.ElementFactory.make("h264parse", "parser")
@@ -57,10 +63,20 @@ def main(video_path):
     muxer = Gst.ElementFactory.make("qtmux", "muxer")
     sink = Gst.ElementFactory.make("filesink", "file-sink")
 
-    if not all([source, demux, parser, decoder, streammux, nvinfer, tracker, nvvidconv, capsfilter, encoder, parser_out, muxer, sink]):
-        print("Failed to create elements")
-        return
+    # Ensure all elements were created
+    elements = {
+        "source": source, "demux": demux, "parser": parser, "decoder": decoder, 
+        "streammux": streammux, "nvinfer": nvinfer, "tracker": tracker, 
+        "nvvidconv": nvvidconv, "capsfilter": capsfilter, "encoder": encoder, 
+        "parser_out": parser_out, "muxer": muxer, "sink": sink
+    }
+    
+    for name, element in elements.items():
+        if not element:
+            print(f"Error: Failed to create {name}")
+            return
 
+    # Set element properties
     source.set_property("location", video_path)
     streammux.set_property("batch-size", 1)
     streammux.set_property("width", 1280)
@@ -71,25 +87,18 @@ def main(video_path):
     nvinfer.set_property("config-file-path", "dstest1_pgie_config.txt")
     sink.set_property("location", "nvdeepsort_tracker_test_1.mp4")
 
-    capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=NV12, width=1280, height=720"))
+    capsfilter.set_property("caps", Gst.Caps.from_string(
+        "video/x-raw(memory:NVMM), format=NV12, width=1280, height=720"
+    ))
 
     tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_nvmultiobjecttracker.so")
     tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvSORT.yml")
 
-    pipeline.add(source)
-    pipeline.add(demux)
-    pipeline.add(parser)
-    pipeline.add(decoder)
-    pipeline.add(streammux)
-    pipeline.add(nvinfer)
-    pipeline.add(tracker)
-    pipeline.add(nvvidconv)
-    pipeline.add(capsfilter)
-    pipeline.add(encoder)
-    pipeline.add(parser_out)
-    pipeline.add(muxer)
-    pipeline.add(sink)
+    # Add elements to pipeline
+    for element in elements.values():
+        pipeline.add(element)
 
+    # Link elements
     source.link(demux)
     parser.link(decoder)
     streammux.link(nvinfer)
@@ -101,27 +110,35 @@ def main(video_path):
     parser_out.link(muxer)
     muxer.link(sink)
 
+    # Handle dynamic demux pad linking
     demux.connect("pad-added", demux_callback, parser)
 
-    sinkpad = streammux.get_request_pad("sink_0")
+    # Get and link request pad for streammux
+    sinkpad = streammux.request_pad(streammux.get_pad_template("sink"))
     if not sinkpad:
-        print("Unable to create sink pad in nvstreammux")
+        print("Error: Unable to create sink pad in nvstreammux")
         return
 
     decoder_src_pad = decoder.get_static_pad("src")
     if decoder_src_pad:
         decoder_src_pad.link(sinkpad)
+    else:
+        print("Error: Unable to get decoder src pad")
+        return
 
+    # Start the pipeline
     bus = pipeline.get_bus()
     loop = GLib.MainLoop()
     bus.add_signal_watch()
-    bus.connect("message", bus_call, loop)
+    bus.connect("message", bus_call, loop, pipeline)
 
+    print("Starting pipeline...")
     pipeline.set_state(Gst.State.PLAYING)
+
     try:
         loop.run()
     except KeyboardInterrupt:
-        stop_pipeline(pipeline)
+        stop_pipeline(pipeline, loop)
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
