@@ -110,7 +110,7 @@ def main(args):
     decodebin = Gst.ElementFactory.make("decodebin", "decoder")
     streammux = Gst.ElementFactory.make("nvstreammux", "stream-muxer")
     pgie = Gst.ElementFactory.make("nvinfer", "primary-inference")
-    nvtracker = Gst.ElementFactory.make("nvtracker", "tracker")  # Added NvSort Tracker
+    nvtracker = Gst.ElementFactory.make("nvtracker", "tracker")
     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "converter")
     nvosd = Gst.ElementFactory.make("nvdsosd", "onscreendisplay")
     encoder = Gst.ElementFactory.make("nvv4l2h264enc", "h264-encoder")
@@ -121,7 +121,7 @@ def main(args):
     if not all([source, decodebin, streammux, pgie, nvtracker, nvvidconv, nvosd, encoder, parser, muxer, sink]):
         sys.stderr.write("Failed to create one or more elements\n")
         return
-    
+
     source.set_property("location", args[1])
     streammux.set_property("batch-size", 1)
     streammux.set_property("width", 1920)
@@ -130,13 +130,12 @@ def main(args):
     pgie.set_property("config-file-path", "dstest1_pgie_config.txt")
 
     # Tracker configuration
-    nvtracker = Gst.ElementFactory.make("nvtracker", "tracker")
     nvtracker.set_property("tracker-width", 960)
     nvtracker.set_property("tracker-height", 544)
     nvtracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream/lib/libnvds_nvmultiobjecttracker.so")
-    nvtracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvSORT.yml")
+    nvtracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvDeepSORT.yml")
     nvtracker.set_property("gpu_id", 0)
-    
+
     sink.set_property("location", "iou_tracker_test_1.mp4")
     sink.set_property("sync", False)
 
@@ -146,7 +145,6 @@ def main(args):
     pipeline.add(pgie)
     pipeline.add(nvtracker)
     pipeline.add(nvvidconv)
-    pipeline.add(nvtracker)
     pipeline.add(nvosd)
     pipeline.add(encoder)
     pipeline.add(parser)
@@ -154,7 +152,6 @@ def main(args):
     pipeline.add(sink)
 
     # Link static elements
-    source.link(decodebin)
     streammux.link(pgie)
     pgie.link(nvtracker)  # Linked Tracker after PGIE
     nvtracker.link(nvvidconv)
@@ -166,11 +163,16 @@ def main(args):
 
     decodebin.connect("pad-added", decodebin_pad_added, streammux)
 
-    print("Starting pipeline, saving output to tracker_test_1.mp4\n")
+    # Add message bus handling
+    bus = pipeline.get_bus()
+    bus.add_signal_watch()
+    loop = GLib.MainLoop()
+    bus.connect("message", bus_call, loop)
+
+    print("Starting pipeline, saving output to iou_tracker_test_1.mp4\n")
     pipeline.set_state(Gst.State.PLAYING)
 
     try:
-        loop = GLib.MainLoop()
         loop.run()
     except KeyboardInterrupt:
         pass
