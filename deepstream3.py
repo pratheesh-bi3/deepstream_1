@@ -92,7 +92,7 @@ def main(video_path):
     ))
 
     tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_nvmultiobjecttracker.so")
-    tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvSORT.yml")
+    tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-test1/iou_config.yml")
 
     # Add elements to pipeline
     for element in elements.values():
