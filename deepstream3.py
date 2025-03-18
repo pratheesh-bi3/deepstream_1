@@ -69,12 +69,12 @@ def main(video_path):
     streammux.set_property("nvbuf-memory-type", 0)
 
     nvinfer.set_property("config-file-path", "dstest1_pgie_config.txt")
-    sink.set_property("location", "custom_output.mp4")
+    sink.set_property("location", "nvdeepsort_tracker_test_1.mp4")
 
     capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=NV12, width=1280, height=720"))
 
     tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_nvmultiobjecttracker.so")
-    tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvSORT")
+    tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvSORT.yml")
 
     pipeline.add(source)
     pipeline.add(demux)
