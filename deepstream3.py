@@ -74,7 +74,7 @@ def main(video_path):
     capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=NV12, width=1280, height=720"))
 
     tracker.set_property("ll-lib-file", "/opt/nvidia/deepstream/deepstream-7.1/lib/libnvds_mot_iou.so")
-    tracker.set_property("ll-config-file", "config_tracker_NvDCF_perf.yml")
+    tracker.set_property("ll-config-file", "/opt/nvidia/deepstream/deepstream-7.1/samples/configs/deepstream-app/config_tracker_NvSORT")
 
     pipeline.add(source)
     pipeline.add(demux)
