@@ -271,7 +271,7 @@ def main(args):
         sys.stderr.write(" Unable to create tracker \n")
 
     print("Creating nvdsanalytics \n ")
-    nvanalytics = Gst.ElementFactory.make("/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-nvdsanalytics/nvdsanalytics", "analytics")
+    nvanalytics = Gst.ElementFactory.make("nvdsanalytics", "analytics")
     if not nvanalytics:
         sys.stderr.write(" Unable to create nvanalytics \n")
     nvanalytics.set_property("config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-nvdsanalytics/config_nvdsanalytics.txt")
