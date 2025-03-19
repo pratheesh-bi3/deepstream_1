@@ -342,7 +342,7 @@ def main(args):
     tiler.set_property("columns",tiler_columns)
     tiler.set_property("width", TILED_OUTPUT_WIDTH)
     tiler.set_property("height", TILED_OUTPUT_HEIGHT)
-    sink.set_property("qos",0)
+    # sink.set_property("qos",0)
 
     #Set properties of tracker
     config = configparser.ConfigParser()
