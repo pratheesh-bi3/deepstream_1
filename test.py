@@ -372,8 +372,10 @@ def main(args):
     pipeline.add(nvanalytics)
     pipeline.add(tiler)
     pipeline.add(nvvidconv)
-    pipeline.add(nvosd)
-    pipeline.add(sink)
+    pipeline.add(nvv4l2h264enc)
+    pipeline.add(h264parse)
+    pipeline.add(mp4mux)
+    pipeline.add(filesink)
 
     # We link elements in the following order:
     # sourcebin -> streammux -> nvinfer -> nvtracker -> nvdsanalytics ->
