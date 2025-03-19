@@ -331,7 +331,7 @@ def main(args):
     streammux.set_property('height', 1080)
     streammux.set_property('batch-size', number_sources)
     streammux.set_property('batched-push-timeout', MUXER_BATCH_TIMEOUT_USEC)
-    pgie.set_property('config-file-path', "dsnvanalytics_pgie_config.txt")
+    pgie.set_property('config-file-path', "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-nvdsanalytics/dsnvanalytics_pgie_config.txt")
     pgie_batch_size=pgie.get_property("batch-size")
     if(pgie_batch_size != number_sources):
         print("WARNING: Overriding infer-config batch-size",pgie_batch_size," with number of sources ", number_sources," \n")
