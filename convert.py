@@ -8,7 +8,7 @@ def build_engine_from_etlt(etlt_model_path, tlt_key):
          trt.OnnxParser(network, TRT_LOGGER) as parser, \
          builder.create_builder_config() as config:  # Use config for TensorRT 8+
 
-        config.max_workspace_size = 1 << 30  # 1GB workspace size
+        # config.max_workspace_size = 1 << 30  # 1GB workspace size
         config.set_flag(trt.BuilderFlag.FP16)  # Enable FP16 mode
 
         with open(etlt_model_path, "rb") as f:
