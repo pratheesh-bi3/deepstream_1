@@ -274,7 +274,7 @@ def main(args):
     nvanalytics = Gst.ElementFactory.make("nvdsanalytics", "analytics")
     if not nvanalytics:
         sys.stderr.write(" Unable to create nvanalytics \n")
-    nvanalytics.set_property("config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-nvdsanalytics/config_nvdsanalytics.txt")
+    nvanalytics.set_property("config-file", "config_nvdsanalytics.txt")
 
     print("Creating tiler \n ")
     tiler=Gst.ElementFactory.make("nvmultistreamtiler", "nvtiler")
@@ -296,7 +296,8 @@ def main(args):
   
     if not h264parse:
         sys.stderr.write(" Unable to create h264parse \n")
-    
+    h264parse.set_property("config-interval", 1)
+
     mp4mux=Gst.ElementFactory.make("mp4mux", "mp4mux")
 
     if not mp4mux:
@@ -331,7 +332,7 @@ def main(args):
     streammux.set_property('height', 1080)
     streammux.set_property('batch-size', number_sources)
     streammux.set_property('batched-push-timeout', MUXER_BATCH_TIMEOUT_USEC)
-    pgie.set_property('config-file-path', "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-nvdsanalytics/dsnvanalytics_pgie_config.txt")
+    pgie.set_property('config-file-path', "dsnvanalytics_pgie_config.txt")
     pgie_batch_size=pgie.get_property("batch-size")
     if(pgie_batch_size != number_sources):
         print("WARNING: Overriding infer-config batch-size",pgie_batch_size," with number of sources ", number_sources," \n")
@@ -346,7 +347,7 @@ def main(args):
 
     #Set properties of tracker
     config = configparser.ConfigParser()
-    config.read('/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-nvdsanalytics/dsnvanalytics_tracker_config.txt')
+    config.read('dsnvanalytics_tracker_config.txt')
     config.sections()
 
     for key in config['tracker']:

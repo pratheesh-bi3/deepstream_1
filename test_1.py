@@ -173,9 +173,6 @@ def create_source_bin(index,uri):
     if not nbin:
         sys.stderr.write(" Unable to create source bin \n")
 
-    # Source element for reading from the uri.
-    # We will use decodebin and let it figure out the container format of the
-    # stream and the codec and plug the appropriate demux and decode plugins.
     uri_decode_bin=Gst.ElementFactory.make("uridecodebin", "uri-decode-bin")
     if not uri_decode_bin:
         sys.stderr.write(" Unable to create uri decode bin \n")
@@ -186,20 +183,17 @@ def create_source_bin(index,uri):
     uri_decode_bin.connect("pad-added",cb_newpad,nbin)
     uri_decode_bin.connect("child-added",decodebin_child_added,nbin)
 
-    # We need to create a ghost pad for the source bin which will act as a proxy
-    # for the video decoder src pad. The ghost pad will not have a target right
-    # now. Once the decode bin creates the video decoder and generates the
-    # cb_newpad callback, we will set the ghost pad target to the video decoder
-    # src pad.
     Gst.Bin.add(nbin,uri_decode_bin)
     bin_pad=nbin.add_pad(Gst.GhostPad.new_no_target("src",Gst.PadDirection.SRC))
     if not bin_pad:
         sys.stderr.write(" Failed to add ghost pad in source bin \n")
         return None
+    print("done successfully")
     return nbin
 
 def main(args):
     # Check input arguments
+    print(args)
     if len(args) < 2:
         sys.stderr.write("usage: %s <uri1> [uri2] ... [uriN]\n" % args[0])
         sys.exit(1)
@@ -221,7 +215,7 @@ def main(args):
     if not pipeline:
         sys.stderr.write(" Unable to create Pipeline \n")
     print("Creating streamux \n ")
-
+    
     # Create nvstreammux instance to form batches from one or more sources.
     streammux = Gst.ElementFactory.make("nvstreammux", "Stream-muxer")
     if not streammux:
@@ -274,7 +268,7 @@ def main(args):
     nvanalytics = Gst.ElementFactory.make("nvdsanalytics", "analytics")
     if not nvanalytics:
         sys.stderr.write(" Unable to create nvanalytics \n")
-    nvanalytics.set_property("config-file", "config_nvdsanalytics.txt")
+    nvanalytics.set_property("config-file", "/opt/nvidia/deepstream/deepstream-7.1/deepstream_python_apps/deepstream_python_apps/apps/deepstream-nvdsanalytics/config_nvdsanalytics.txt")
 
     print("Creating tiler \n ")
     tiler=Gst.ElementFactory.make("nvmultistreamtiler", "nvtiler")
@@ -285,14 +279,27 @@ def main(args):
     nvvidconv = Gst.ElementFactory.make("nvvideoconvert", "convertor")
     if not nvvidconv:
         sys.stderr.write(" Unable to create nvvidconv \n")
+  
+    nvv4l2h264enc = Gst.ElementFactory.make("nvv4l2h264enc", "nvv4l2h264enc")
+    if not nvv4l2h264enc:
+        sys.stderr.write(" Unable to create nvv4l2h264enc \n")
+      
+    h264parse=Gst.ElementFactory.make("h264parse", "h264parse")
+  
+    if not h264parse:
+        sys.stderr.write(" Unable to create h264parse \n")
+    
+    mp4mux=Gst.ElementFactory.make("mp4mux", "mp4mux")
 
-    print("Creating nvosd \n ")
-    nvosd = Gst.ElementFactory.make("nvdsosd", "onscreendisplay")
-    if not nvosd:
-        sys.stderr.write(" Unable to create nvosd \n")
-    nvosd.set_property('process-mode',OSD_PROCESS_MODE)
-    nvosd.set_property('display-text',OSD_DISPLAY_TEXT)
+    if not mp4mux:
+        sys.stderr.write(" Unable to create mp4mux \n")
 
+    filesink=Gst.ElementFactory.make("filesink", "filesink")
+    if not filesink:
+        sys.stderr.write(" Unable to create filesink \n")
+
+    filesink.set_property("location","test_nv.mp4")
+    
     if platform_info.is_integrated_gpu():
         print("Creating nv3dsink \n")
         sink = Gst.ElementFactory.make("nv3dsink", "nv3d-sink")
@@ -327,7 +334,7 @@ def main(args):
     tiler.set_property("columns",tiler_columns)
     tiler.set_property("width", TILED_OUTPUT_WIDTH)
     tiler.set_property("height", TILED_OUTPUT_HEIGHT)
-    sink.set_property("qos",0)
+    # sink.set_property("qos",0)
 
     #Set properties of tracker
     config = configparser.ConfigParser()
@@ -357,8 +364,10 @@ def main(args):
     pipeline.add(nvanalytics)
     pipeline.add(tiler)
     pipeline.add(nvvidconv)
-    pipeline.add(nvosd)
-    pipeline.add(sink)
+    pipeline.add(nvv4l2h264enc)
+    pipeline.add(h264parse)
+    pipeline.add(mp4mux)
+    pipeline.add(filesink)
 
     # We link elements in the following order:
     # sourcebin -> streammux -> nvinfer -> nvtracker -> nvdsanalytics ->
@@ -375,36 +384,11 @@ def main(args):
     tiler.link(queue5)
     queue5.link(nvvidconv)
     nvvidconv.link(queue6)
-    queue6.link(nvosd)
-    print("Creating Encoder, Parser, and Muxer for MP4 saving \n")
-    nvvidconv_postosd = Gst.ElementFactory.make("nvvideoconvert", "convertor_postosd")
-    capsfilter = Gst.ElementFactory.make("capsfilter", "capsfilter")
-    encoder = Gst.ElementFactory.make("nvv4l2h264enc", "encoder")
-    h264parser = Gst.ElementFactory.make("h264parse", "h264-parser")
-    mp4mux = Gst.ElementFactory.make("qtmux", "muxer")
-    filesink = Gst.ElementFactory.make("filesink", "file-sink")
-
-# Check if elements are created properly
-    if not (nvvidconv_postosd and capsfilter and encoder and h264parser and mp4mux and filesink):
-    	sys.stderr.write(" Unable to create MP4 file elements \n")
-    capsfilter.set_property("caps", Gst.Caps.from_string("video/x-raw(memory:NVMM), format=I420"))
-    encoder.set_property("bitrate", 4000000)  # Adjust bitrate as needed
-    filesink.set_property("location", "output.mp4")
-    filesink.set_property("sync", 1)
-    pipeline.add(nvvidconv_postosd)
-    pipeline.add(capsfilter)
-    pipeline.add(encoder)
-    pipeline.add(h264parser)
-    pipeline.add(mp4mux)
-    pipeline.add(filesink)
-    # Linking for MP4 Output
-    queue7.link(nvvidconv_postosd)
-    nvvidconv_postosd.link(capsfilter)
-    capsfilter.link(encoder)
-    encoder.link(h264parser)
-    h264parser.link(mp4mux)
+    queue6.link(nvv4l2h264enc)
+    nvv4l2h264enc.link(queue7)
+    queue7.link(h264parse)
+    h264parse.link(mp4mux)
     mp4mux.link(filesink)
-
 
     # create an event loop and feed gstreamer bus mesages to it
     loop = GLib.MainLoop()
@@ -428,8 +412,11 @@ def main(args):
     print("Starting pipeline \n")
     # start play back and listed to events		
     pipeline.set_state(Gst.State.PLAYING)
+    print("palying")
     try:
+        print("loop")
         loop.run()
+        print("is it")
     except:
         pass
     # cleanup
